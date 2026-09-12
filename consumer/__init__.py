@@ -1,0 +1,2 @@
+"""TraceAI event storage consumer."""
+

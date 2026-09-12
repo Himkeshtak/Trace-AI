@@ -80,6 +80,56 @@ services:
       retries: 10
     networks: [traceai]
 
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: traceai-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://traceai:traceai_dev_password@postgres:5432/traceai}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-trace-events}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ANALYTICS_CACHE_TTL_SECONDS: ${ANALYTICS_CACHE_TTL_SECONDS:-30}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [traceai]
+
+  consumer:
+    build:
+      context: .
+      dockerfile: consumer/Dockerfile
+    container_name: traceai-consumer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://traceai:traceai_dev_password@postgres:5432/traceai}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-trace-events}
+      KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-traceai-storage}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    networks: [traceai]
+
   airflow:
     build:
       context: ./airflow
@@ -118,4 +168,3 @@ volumes:
   postgres_data:
   redis_data:
   airflow_logs:
-
