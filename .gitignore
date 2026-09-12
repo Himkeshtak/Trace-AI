@@ -27,3 +27,5 @@ Thumbs.db
 # Runtime output
 logs/
 *.log
+dashboard-check.png
+dashboard-mobile-check.png

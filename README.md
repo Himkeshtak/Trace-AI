@@ -190,6 +190,15 @@ pnpm install --frozen-lockfile
 pnpm run build
 ```
 
+Preview the frontend with representative local data when the infrastructure is unavailable:
+
+```powershell
+$env:VITE_DEMO_MODE='true'
+pnpm run dev
+```
+
+Demo mode is opt-in and dynamically loaded; normal builds always use the TraceAI API.
+
 Validate the whole container configuration on a machine with Docker:
 
 ```powershell
@@ -197,5 +206,8 @@ docker compose config --quiet
 docker compose up -d --build
 docker compose ps
 ```
+
+Every push and pull request to `main` repeats the Python compilation and tests,
+Compose validation, dashboard type-check, and production build in GitHub Actions.
 
 This development host does not currently have Docker installed, so the Python tests, compilation checks, TypeScript type check, and production frontend build are performed locally; container startup must be run on a Docker-enabled machine.
