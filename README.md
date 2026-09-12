@@ -6,18 +6,20 @@ This repository is a focused data-engineering platform rather than a full AI-age
 
 ## Current architecture
 
-The event ingestion and storage path is implemented. FastAPI validates the shared event contract and publishes accepted events to Kafka. The consumer writes them transactionally to PostgreSQL and invalidates cached analytics after committed writes.
+The complete data path is implemented through analytics aggregation. A deterministic simulator emits valid execution lifecycles, FastAPI publishes them to Kafka, the consumer persists them, Redis caches analytical reads, and Airflow rebuilds a 30-day `daily_metrics` window on a daily schedule or manual trigger.
 
 ```mermaid
 flowchart LR
-    Client[Event client] -->|validated HTTP event| API[FastAPI ingestion API]
+    S[Deterministic simulator] -->|validated HTTP event| API[FastAPI ingestion API]
     API -->|execution_id key| K[Apache Kafka\ntrace-events]
     K --> C[Storage consumer]
     C -->|transactional insert| P[(PostgreSQL)]
     C -->|invalidate analytics:*| R[(Redis)]
     P --> Q[FastAPI analytics queries]
     R <-->|cache aside| Q
-    A[Apache Airflow] -. scheduled aggregation next milestone .-> P
+    P --> A[Apache Airflow\ndaily or manual DAG]
+    A --> M[(daily_metrics)]
+    M --> Q
     UI[Dashboard] -. next milestone .-> Q
 ```
 
@@ -79,7 +81,42 @@ docker compose up -d --build postgres kafka kafka-init redis backend consumer ai
 docker compose ps
 ```
 
+4. Generate a reproducible 250-execution dataset:
+
+```powershell
+docker compose --profile demo run --rm simulator
+```
+
+Use a larger or differently seeded workload when needed:
+
+```powershell
+docker compose --profile demo run --rm simulator --executions 1000 --concurrency 20 --seed 22
+```
+
+5. Open Airflow, enable `traceai_daily_metrics`, and trigger it once to populate `daily_metrics`. It will subsequently run at 01:00 each day.
+
 The default Airflow development login is `admin` / `admin`. Change all example credentials outside a local classroom environment.
+
+## Event lifecycle
+
+Each simulated execution keeps a strict, easy-to-explain order:
+
+```mermaid
+sequenceDiagram
+    participant S as Simulator
+    participant API as FastAPI
+    participant K as Kafka
+    participant C as Consumer
+    participant P as PostgreSQL
+    S->>API: execution_started
+    S->>API: memory_access (optional)
+    S->>API: 1-3 llm_usage events
+    S->>API: 1-4 tool_call events
+    S->>API: execution_completed
+    API->>K: publish, keyed by execution_id
+    K->>C: ordered partition records
+    C->>P: idempotent transaction per event
+```
 
 ## API surface
 
@@ -108,5 +145,4 @@ OpenAPI documentation is available at [localhost:8000/docs](http://localhost:800
 
 ## Development status
 
-The infrastructure, shared event contract, ingestion API, Kafka consumer, persistent data model, cache-aside analytics API, and contract tests are implemented. The workload simulator, Airflow DAG, dashboard, and end-to-end verification follow in subsequent commits.
-
+The infrastructure, event pipeline, cache-aside analytics, deterministic simulator, Airflow aggregation DAG, and automated contract/simulator tests are implemented. The dashboard and end-to-end verification follow in the next milestone.

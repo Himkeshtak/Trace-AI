@@ -1,0 +1,2 @@
+"""Synthetic TraceAI workload generator."""
+

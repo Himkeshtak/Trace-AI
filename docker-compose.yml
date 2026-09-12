@@ -130,6 +130,17 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     networks: [traceai]
 
+  simulator:
+    profiles: ["demo"]
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    command: ["--base-url", "http://backend:8000/api/v1", "--executions", "250"]
+    networks: [traceai]
+
   airflow:
     build:
       context: ./airflow
@@ -146,6 +157,7 @@ services:
       AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-admin}
       AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
       TRACEAI_DATABASE_URL: postgresql://${POSTGRES_USER:-traceai}:${POSTGRES_PASSWORD:-traceai_dev_password}@postgres:5432/${POSTGRES_DB:-traceai}
+      AIRFLOW_CONN_TRACEAI_POSTGRES: postgresql://${POSTGRES_USER:-traceai}:${POSTGRES_PASSWORD:-traceai_dev_password}@postgres:5432/${POSTGRES_DB:-traceai}
     command: standalone
     ports:
       - "8080:8080"
