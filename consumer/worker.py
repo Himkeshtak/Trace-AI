@@ -6,21 +6,14 @@ from contextlib import suppress
 
 from aiokafka import AIOKafkaConsumer
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
-from psycopg import AsyncConnection
 from redis.asyncio import Redis
 
 from consumer.config import ConsumerSettings
-from consumer.handlers import persist_event
+from consumer.hot_store import RedisHotStore
 from shared.traceai_contracts import trace_event_adapter
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("traceai.consumer")
-
-
-async def invalidate_analytics_cache(redis: Redis) -> None:
-    keys = [key async for key in redis.scan_iter(match="analytics:*")]
-    if keys:
-        await redis.delete(*keys)
 
 
 async def consume() -> None:
@@ -34,7 +27,11 @@ async def consume() -> None:
         value_deserializer=lambda value: json.loads(value.decode("utf-8")),
     )
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
-    connection = await AsyncConnection.connect(settings.database_url)
+    hot_store = RedisHotStore(
+        redis,
+        settings.redis_persistence_stream,
+        settings.redis_processed_event_ttl_seconds,
+    )
     stopping = asyncio.Event()
     loop = asyncio.get_running_loop()
     for signal_name in (signal.SIGINT, signal.SIGTERM):
@@ -52,10 +49,7 @@ async def consume() -> None:
                 for record in records:
                     try:
                         event = trace_event_adapter.validate_python(record.value)
-                        async with connection.transaction():
-                            inserted = await persist_event(connection, event)
-                        if inserted:
-                            await invalidate_analytics_cache(redis)
+                        inserted = await hot_store.write(event)
                         partition = TopicPartition(record.topic, record.partition)
                         await kafka_consumer.commit(
                             {partition: OffsetAndMetadata(record.offset + 1, "")}
@@ -72,7 +66,6 @@ async def consume() -> None:
     finally:
         await kafka_consumer.stop()
         await redis.aclose()
-        await connection.close()
         logger.info("consumer_stopped")
 
 

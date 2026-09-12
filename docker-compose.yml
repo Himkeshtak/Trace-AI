@@ -87,18 +87,14 @@ services:
     container_name: traceai-backend
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://traceai:traceai_dev_password@postgres:5432/traceai}
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       KAFKA_TOPIC: ${KAFKA_TOPIC:-trace-events}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      ANALYTICS_CACHE_TTL_SECONDS: ${ANALYTICS_CACHE_TTL_SECONDS:-30}
       API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
     ports:
       - "8000:8000"
@@ -116,18 +112,35 @@ services:
     container_name: traceai-consumer
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
       kafka-init:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://traceai:traceai_dev_password@postgres:5432/traceai}
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
       KAFKA_TOPIC: ${KAFKA_TOPIC:-trace-events}
       KAFKA_CONSUMER_GROUP: ${KAFKA_CONSUMER_GROUP:-traceai-storage}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_PERSISTENCE_STREAM: ${REDIS_PERSISTENCE_STREAM:-trace:persistence}
+      REDIS_PROCESSED_EVENT_TTL_SECONDS: ${REDIS_PROCESSED_EVENT_TTL_SECONDS:-604800}
+    networks: [traceai]
+
+  persistence:
+    build:
+      context: .
+      dockerfile: persistence/Dockerfile
+    container_name: traceai-persistence
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://traceai:traceai_dev_password@postgres:5432/traceai}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      REDIS_PERSISTENCE_STREAM: ${REDIS_PERSISTENCE_STREAM:-trace:persistence}
+      REDIS_PERSISTENCE_GROUP: postgres-writers
     networks: [traceai]
 
   simulator:
@@ -141,12 +154,29 @@ services:
     command: ["--base-url", "http://backend:8000/api/v1", "--executions", "250"]
     networks: [traceai]
 
+  dashboard:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+    container_name: traceai-dashboard
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    networks: [traceai]
+
   airflow:
     build:
       context: ./airflow
     container_name: traceai-airflow
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -157,7 +187,7 @@ services:
       AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-admin}
       AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
       TRACEAI_DATABASE_URL: postgresql://${POSTGRES_USER:-traceai}:${POSTGRES_PASSWORD:-traceai_dev_password}@postgres:5432/${POSTGRES_DB:-traceai}
-      AIRFLOW_CONN_TRACEAI_POSTGRES: postgresql://${POSTGRES_USER:-traceai}:${POSTGRES_PASSWORD:-traceai_dev_password}@postgres:5432/${POSTGRES_DB:-traceai}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     command: standalone
     ports:
       - "8080:8080"

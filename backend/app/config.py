@@ -8,11 +8,9 @@ class Settings(BaseSettings):
 
     app_name: str = "TraceAI API"
     environment: str = "development"
-    database_url: str = "postgresql://traceai:traceai_dev_password@localhost:5432/traceai"
     kafka_bootstrap_servers: str = "localhost:9092"
     kafka_topic: str = "trace-events"
     redis_url: str = "redis://localhost:6379/0"
-    analytics_cache_ttl_seconds: int = 30
     api_cors_origins: str = "http://localhost:5173,http://localhost:3000"
 
     @property

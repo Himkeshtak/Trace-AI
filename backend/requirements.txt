@@ -1,7 +1,5 @@
 fastapi==0.115.8
 uvicorn[standard]==0.34.0
 aiokafka==0.12.0
-psycopg[binary,pool]==3.2.4
 redis==5.2.1
 pydantic-settings==2.7.1
-
