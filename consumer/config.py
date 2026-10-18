@@ -9,4 +9,5 @@ class ConsumerSettings(BaseSettings):
     kafka_consumer_group: str = "traceai-storage"
     redis_url: str = "redis://localhost:6379/0"
     redis_persistence_stream: str = "trace:persistence"
+    redis_quarantine_stream: str = "trace:quarantine"
     redis_processed_event_ttl_seconds: int = 604_800
