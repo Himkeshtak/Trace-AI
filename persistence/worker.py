@@ -3,9 +3,18 @@ import json
 import logging
 import socket
 from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from psycopg import AsyncConnection
+if TYPE_CHECKING:
+    from psycopg import AsyncConnection
+else:
+    try:
+        from psycopg import AsyncConnection
+    except ImportError:  # pragma: no cover
+        class AsyncConnection:  # pragma: no cover
+            def __class_getitem__(cls, item: Any) -> Any:
+                return Any
+
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
@@ -25,6 +34,16 @@ async def ensure_group(redis: Redis, stream: str, group: str) -> None:
             raise
 
 
+def _parse_int_coordinate(fields: dict[str, str], field_name: str) -> int | None:
+    if field_name not in fields or fields[field_name] is None:
+        return None
+    raw_val = fields[field_name]
+    val = int(raw_val)
+    if val < 0:
+        raise ValueError(f"{field_name} must be non-negative, got {val}")
+    return val
+
+
 async def store_messages(
     redis: Redis,
     connection: AsyncConnection[Any],
@@ -35,8 +54,18 @@ async def store_messages(
     for message_id, fields in messages:
         try:
             event = trace_event_adapter.validate_python(json.loads(fields["payload"]))
+            source_topic = fields.get("source_topic")
+            source_partition = _parse_int_coordinate(fields, "source_partition")
+            source_offset = _parse_int_coordinate(fields, "source_offset")
+
             async with connection.transaction():
-                inserted = await persist_event(connection, event)
+                inserted = await persist_event(
+                    connection,
+                    event,
+                    source_topic=source_topic,
+                    source_partition=source_partition,
+                    source_offset=source_offset,
+                )
             await redis.xack(stream, group, message_id)
             logger.info(
                 "event_archived event_id=%s event_type=%s duplicate=%s",

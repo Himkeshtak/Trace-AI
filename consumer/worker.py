@@ -78,7 +78,12 @@ async def process_record(
         return True
 
     # 4. Valid event - Hot store write
-    inserted = await hot_store.write(event)
+    inserted = await hot_store.write(
+        event,
+        topic=record.topic,
+        partition=record.partition,
+        offset=record.offset,
+    )
     logger.info(
         "event_processed event_id=%s event_type=%s duplicate=%s",
         event.event_id,
