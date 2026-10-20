@@ -1,7 +1,20 @@
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from psycopg import AsyncConnection
-from psycopg.types.json import Jsonb
+if TYPE_CHECKING:
+    from psycopg import AsyncConnection
+    from psycopg.types.json import Jsonb
+else:
+    try:
+        from psycopg import AsyncConnection
+        from psycopg.types.json import Jsonb
+    except ImportError:  # pragma: no cover
+        class AsyncConnection:  # pragma: no cover
+            def __class_getitem__(cls, item: Any) -> Any:
+                return Any
+
+        class Jsonb:  # pragma: no cover
+            def __init__(self, obj: Any) -> None:
+                self.obj = obj
 
 from shared.traceai_contracts import (
     ExecutionCompletedEvent,
@@ -13,16 +26,33 @@ from shared.traceai_contracts import (
 )
 
 
-async def persist_event(connection: AsyncConnection[Any], event: TraceEvent) -> bool:
+async def persist_event(
+    connection: AsyncConnection[Any],
+    event: TraceEvent,
+    source_topic: str | None = None,
+    source_partition: int | None = None,
+    source_offset: int | None = None,
+) -> bool:
     payload = event.model_dump(mode="json")
     cursor = await connection.execute(
         """
-        INSERT INTO processed_events(event_id, event_type, execution_id, payload)
-        VALUES (%s, %s, %s, %s)
+        INSERT INTO processed_events(
+            event_id, event_type, execution_id, payload,
+            source_topic, source_partition, source_offset
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (event_id) DO NOTHING
         RETURNING event_id
         """,
-        (event.event_id, event.event_type, event.execution_id, Jsonb(payload)),
+        (
+            event.event_id,
+            event.event_type,
+            event.execution_id,
+            Jsonb(payload),
+            source_topic,
+            source_partition,
+            source_offset,
+        ),
     )
     if await cursor.fetchone() is None:
         return False

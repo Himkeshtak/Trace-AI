@@ -25,7 +25,13 @@ class RedisHotStore:
         self.persistence_stream = persistence_stream
         self.processed_ttl_seconds = processed_ttl_seconds
 
-    async def write(self, event: TraceEvent) -> bool:
+    async def write(
+        self,
+        event: TraceEvent,
+        topic: str | None = None,
+        partition: int | None = None,
+        offset: int | None = None,
+    ) -> bool:
         processed_key = f"trace:processed:{event.event_id}"
         agent_id = await self._execution_agent_id(event)
         for _ in range(3):
@@ -37,9 +43,18 @@ class RedisHotStore:
                         return False
                     pipeline.multi()
                     pipeline.set(processed_key, "1", ex=self.processed_ttl_seconds)
+                    stream_fields = {
+                        "payload": json.dumps(event.model_dump(mode="json")),
+                    }
+                    if topic is not None:
+                        stream_fields["source_topic"] = str(topic)
+                    if partition is not None:
+                        stream_fields["source_partition"] = str(partition)
+                    if offset is not None:
+                        stream_fields["source_offset"] = str(offset)
                     pipeline.xadd(
                         self.persistence_stream,
-                        {"payload": json.dumps(event.model_dump(mode="json"))},
+                        stream_fields,
                         maxlen=100_000,
                         approximate=True,
                     )

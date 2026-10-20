@@ -53,7 +53,10 @@ CREATE TABLE processed_events (
     event_type VARCHAR(40) NOT NULL,
     execution_id UUID NOT NULL,
     payload JSONB NOT NULL,
-    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    source_topic VARCHAR(120),
+    source_partition INTEGER CHECK (source_partition IS NULL OR source_partition >= 0),
+    source_offset BIGINT CHECK (source_offset IS NULL OR source_offset >= 0)
 );
 
 CREATE TABLE daily_metrics (

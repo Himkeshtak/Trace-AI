@@ -119,6 +119,10 @@ async def test_valid_event_is_processed() -> None:
     assert handled is True
     assert mock_hot_store.write.call_count == 1
     assert mock_redis.xadd.call_count == 0
+    call_kwargs = mock_hot_store.write.call_args[1]
+    assert call_kwargs["topic"] == "trace-events"
+    assert call_kwargs["partition"] == 0
+    assert call_kwargs["offset"] == 10
 
 
 @pytest.mark.anyio
