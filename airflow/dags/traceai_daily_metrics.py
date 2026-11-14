@@ -1,10 +1,13 @@
 import os
 from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import psycopg2
 import redis
 from airflow import DAG
 from airflow.operators.python import PythonOperator
+
+TRACEAI_TIMEZONE = ZoneInfo("Asia/Kolkata")
 
 
 def as_int(values: dict[str, str], field: str) -> int:
@@ -68,10 +71,11 @@ def archive_daily_metrics() -> None:
 with DAG(
     dag_id="traceai_daily_metrics",
     description="Archive Redis hot metrics as durable PostgreSQL daily summaries.",
-    start_date=datetime(2026, 1, 1),
+    start_date=datetime(2026, 1, 1, tzinfo=TRACEAI_TIMEZONE),
     schedule="0 1 * * *",
     catchup=False,
     max_active_runs=1,
+    is_paused_upon_creation=False,
     tags=["traceai", "redis", "analytics"],
 ) as dag:
     archive_metrics = PythonOperator(

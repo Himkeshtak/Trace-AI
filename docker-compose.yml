@@ -181,6 +181,8 @@ services:
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Kolkata
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD:-airflow_dev_password}@postgres:5432/${AIRFLOW_DB:-airflow}
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "false"
       AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: Asia/Kolkata
@@ -200,6 +202,25 @@ services:
       timeout: 10s
       retries: 20
       start_period: 45s
+    networks: [traceai]
+
+  airflow-dag-init:
+    build:
+      context: ./airflow
+    container_name: traceai-airflow-dag-init
+    depends_on:
+      airflow:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Kolkata
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${AIRFLOW_USER:-airflow}:${AIRFLOW_PASSWORD:-airflow_dev_password}@postgres:5432/${AIRFLOW_DB:-airflow}
+      TRACEAI_AIRFLOW_DAG_ID: traceai_daily_metrics
+    command: ["bash", "/usr/local/bin/traceai-unpause-dag"]
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
     networks: [traceai]
 
 networks:
