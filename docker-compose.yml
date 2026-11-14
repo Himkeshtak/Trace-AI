@@ -80,6 +80,30 @@ services:
       retries: 10
     networks: [traceai]
 
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: traceai-redis-insight
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      RI_ACCEPT_TERMS_AND_CONDITIONS: "true"
+      RI_REDIS_HOST: redis
+      RI_REDIS_PORT: "6379"
+      RI_REDIS_ALIAS: TraceAI Redis
+    ports:
+      - "8082:5540"
+    volumes:
+      - redisinsight_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:5540/api/health/ || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks: [traceai]
+
   backend:
     build:
       context: .
@@ -230,4 +254,5 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  redisinsight_data:
   airflow_logs:
