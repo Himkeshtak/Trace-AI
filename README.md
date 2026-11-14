@@ -81,6 +81,7 @@ traceai/
 | Dashboard | [localhost:3000](http://localhost:3000) | Operational charts and tables |
 | TraceAI API | [localhost:8000/docs](http://localhost:8000/docs) | Event ingestion and Redis-backed analytics |
 | Airflow | [localhost:8080](http://localhost:8080) | Scheduled Redis metric snapshots (01:00 Asia/Kolkata) |
+| Kafka UI | [localhost:8081](http://localhost:8081) | Browse topics, partitions, messages, consumer groups, and lag (local development) |
 | PostgreSQL | `localhost:5432` | Durable normalized records and daily metrics |
 | Kafka | `localhost:9092` | Three-partition event buffer |
 | Redis | `localhost:6379` | Hot projections, counters, rankings, and persistence stream |
@@ -117,6 +118,8 @@ docker compose --profile demo run --rm simulator --executions 1000 --concurrency
 4. Open [the dashboard](http://localhost:3000). It reads live operational projections from Redis through FastAPI.
 
 5. Open [Airflow](http://localhost:8080) and sign in with the local default `admin` / `admin`. `traceai_daily_metrics` is created unpaused by the stack and is scheduled for 01:00 Asia/Kolkata. You can trigger it manually from the UI or with `docker compose exec airflow airflow dags trigger traceai_daily_metrics` when you want an immediate snapshot. The DAG reads the last 30 days of Redis daily hashes and upserts them into PostgreSQL `daily_metrics`.
+
+6. Open [Kafka UI](http://localhost:8081) to inspect the `trace-events` topic, its three partitions and offsets, individual messages, the `traceai-storage` consumer group, and consumer lag. The UI is an unauthenticated, local-development convenience only; do not expose it publicly.
 
 Development credentials in `.env.example` are intentionally local-only and must be replaced in a shared or deployed environment.
 
