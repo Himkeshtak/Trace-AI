@@ -2,7 +2,6 @@ import asyncio
 import json
 import logging
 import signal
-from collections.abc import Mapping
 from contextlib import suppress
 from datetime import UTC, datetime
 
@@ -94,68 +93,6 @@ async def process_record(
     return True
 
 
-async def process_batch(
-    kafka_consumer: AIOKafkaConsumer,
-    batch: Mapping[TopicPartition, list[ConsumerRecord]],
-    hot_store: RedisHotStore,
-    redis: Redis,
-    quarantine_stream: str,
-) -> bool:
-    """Process a fetched batch without committing past a failed record.
-
-    Returns True if any record failed. Records from independent partitions can
-    still be processed, while the failed partition is rewound to its first
-    unhandled offset.
-    """
-    had_failure = False
-    for partition, records in batch.items():
-        for record in records:
-            if partition not in kafka_consumer.assignment():
-                logger.info(
-                    "record_skipped_partition_unassigned topic=%s partition=%s offset=%s",
-                    partition.topic,
-                    partition.partition,
-                    record.offset,
-                )
-                break
-
-            try:
-                handled = await process_record(
-                    record,
-                    hot_store,
-                    redis,
-                    quarantine_stream,
-                )
-                if not handled:
-                    raise RuntimeError("record was not handled")
-
-                await kafka_consumer.commit(
-                    {partition: OffsetAndMetadata(record.offset + 1, "")}
-                )
-            except Exception:
-                had_failure = True
-                logger.exception("event_processing_failed offset=%s", record.offset)
-
-                # A revoked partition will be resumed by its next owner from
-                # the last committed offset. Never seek or commit it here.
-                if partition in kafka_consumer.assignment():
-                    try:
-                        kafka_consumer.seek(partition, record.offset)
-                    except Exception:
-                        # Continuing could fetch later offsets while this one
-                        # remains uncommitted. Exit so restart resumes safely.
-                        logger.exception(
-                            "event_recovery_seek_failed topic=%s partition=%s offset=%s",
-                            partition.topic,
-                            partition.partition,
-                            record.offset,
-                        )
-                        raise
-                break
-
-    return had_failure
-
-
 async def consume() -> None:
     settings = ConsumerSettings()
     kafka_consumer = AIOKafkaConsumer(
@@ -184,15 +121,23 @@ async def consume() -> None:
             batch = await kafka_consumer.getmany(timeout_ms=1_000, max_records=100)
             if not batch:
                 continue
-            had_failure = await process_batch(
-                kafka_consumer,
-                batch,
-                hot_store,
-                redis,
-                settings.redis_quarantine_stream,
-            )
-            if had_failure:
-                await asyncio.sleep(1)
+            for records in batch.values():
+                for record in records:
+                    try:
+                        handled = await process_record(
+                            record,
+                            hot_store,
+                            redis,
+                            settings.redis_quarantine_stream,
+                        )
+                        if handled:
+                            partition = TopicPartition(record.topic, record.partition)
+                            await kafka_consumer.commit(
+                                {partition: OffsetAndMetadata(record.offset + 1, "")}
+                            )
+                    except Exception:
+                        logger.exception("event_processing_failed offset=%s", record.offset)
+                        await asyncio.sleep(1)
     finally:
         await kafka_consumer.stop()
         await redis.aclose()
